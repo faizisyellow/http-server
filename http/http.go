@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+type ServerResponse interface {
+	Write(statusCode int, statusText string, headers Header, body string)
+}
+
 type Header map[string]string
 
 type Request struct {
@@ -15,19 +19,37 @@ type Request struct {
 	Proto  string
 	Header Header
 	Body   []byte
+	Params map[string]string
 }
 
 type ResponseWrite struct {
 	Conn net.Conn
 }
 
-func (r *ResponseWrite) Write(statusCode int, statusText string) {
+func (r *ResponseWrite) Write(statusCode int, statusText string, headers Header, body string) {
+	response := fmt.Sprintf("HTTP/1.1 %v %v\r\n", statusCode, statusText)
 
-	r.Conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %v %v\r\n", statusCode, statusText)))
+	if headers == nil {
+		headers = make(Header)
+	}
 
+	//  default headers
+	headers["Content-Length"] = fmt.Sprintf("%d", len(body))
+	if _, ok := headers["Content-Type"]; !ok {
+		headers["Content-Type"] = "text/plain"
+	}
+
+	for k, v := range headers {
+		response += fmt.Sprintf("%v: %v\r\n", k, v)
+	}
+
+	response += "\r\n"
+	response += body
+
+	r.Conn.Write([]byte(response))
 }
 
-type HandlerFunc func(Request, *ResponseWrite)
+type HandlerFunc func(Request, ServerResponse)
 
 var routes = make(map[string]HandlerFunc)
 
@@ -65,17 +87,17 @@ func handleConnection(conn net.Conn) {
 
 	n, err := conn.Read(data)
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 		return
 	}
 
 	req := parseHttpRequest(data[:n])
 
-	fmt.Println(req)
-
 	for pattern, handler := range routes {
-		if pattern == req.Url {
+		if ok, params := matchRoute(pattern, req.Url); ok {
+			req.Params = params
 			handler(req, &ResponseWrite{Conn: conn})
+			break
 		}
 	}
 
@@ -107,4 +129,38 @@ func parseHttpRequest(data []byte) Request {
 		Header: headers,
 		Body:   []byte(body),
 	}
+}
+
+func matchRoute(pattern, path string) (bool, map[string]string) {
+	patternParts := strings.Split(pattern, "/")
+	pathParts := strings.Split(path, "/")
+
+	params := map[string]string{}
+	for i := range patternParts {
+		if i >= len(pathParts) {
+			return false, nil
+		}
+
+		pp := patternParts[i]
+		cp := pathParts[i]
+
+		if strings.HasPrefix(pp, "*") {
+			key := pp[1:]
+			params[key] = strings.Join(pathParts[i:], "/")
+			return true, params
+		}
+
+		if strings.HasPrefix(pp, "{") && strings.HasSuffix(pp, "}") {
+			key := pp[1 : len(pp)-1]
+			params[key] = cp
+		} else if pp != cp {
+			return false, nil
+		}
+	}
+
+	if len(pathParts) > len(patternParts) {
+		return false, nil
+	}
+
+	return true, params
 }

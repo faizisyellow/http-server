@@ -1,69 +1,48 @@
 package main
 
 import (
+	"log"
+	"path/filepath"
+
 	"github.com/faizisyellow/http-server/http"
 )
 
-func base(r http.Request, w *http.ResponseWrite) {
-	w.Write(200, "OK")
+func baseHandler(r http.Request, w http.ServerResponse) {
+
+	w.Write(200, "OK", nil, "")
 }
 
-// func echo(r http.Request, w *http.ResponseWritter) {
+func echoHandler(r http.Request, w http.ServerResponse) {
+	text := r.Params["text"]
 
-// }
+	w.Write(200, "OK", nil, text)
+}
 
-// func userAgent(r http.Request, w *http.ResponseWritter) {
+func userAgentHandler(r http.Request, w http.ServerResponse) {
 
-// }
+	w.Write(200, "OK", nil, r.Header["User-Agent"])
+}
 
-// func fileOperation(r http.Request, w *http.Response) {
-// 	if r.Method == "POST" {
-// 		filename, _ := strings.CutPrefix(r.Url, "/files/")
-// 		path := fmt.Sprintf("files/%v", filename)
-// 		f, err := os.Create(path)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 			return
-// 		}
+func fileHandler(r http.Request, w http.ServerResponse) {
 
-// 		defer f.Close()
+	// TODO: figure it out the response
+	var fileName string
 
-// 		_, err = f.Write(r.Body)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
+	// 	// if the directory empty it return dot
+	if filepath.Dir(dirpath) != "." {
+		paths, err := filepath.Glob(dirpath + ".*")
+		if err != nil {
+			log.Fatal(err)
+		}
+		if len(paths) == 0 {
+			w.Write(404, "Not Found", nil, "")
+			return
+		}
 
-// 		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 201 Created\r\n\r\n")))
-// 		return
-// 	}
+		fileName = paths[0]
+	} else {
 
-// 	dirpath, _ := strings.CutPrefix(r.Url, "/")
-// 	var fileName string
-
-// 	// if the directory empty it return dot
-// 	if filepath.Dir(dirpath) != "." {
-// 		paths, err := filepath.Glob(dirpath + ".*")
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			return
-// 		}
-// 		if len(paths) == 0 {
-// 			conn.Write([]byte("HTTP/1.1 404 OK\r\n\r\n"))
-// 			return
-// 		}
-
-// 		fileName = paths[0]
-// 	} else {
-// 		conn.Write([]byte("HTTP/1.1 404 OK\r\n\r\n"))
-// 		return
-// 	}
-
-// 	fileContent, err := os.ReadFile(fileName)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return
-// 	}
-
-// 	conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %v\r\n\r\n%v", len(string(fileContent)), string(fileContent))))
-
-// }
+		w.Write(505, "Server Error", nil, "")
+		return
+	}
+}
