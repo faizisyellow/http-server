@@ -14,12 +14,13 @@ type ServerResponse interface {
 type Header map[string]string
 
 type Request struct {
-	Method string
-	Url    string
-	Proto  string
-	Header Header
-	Body   []byte
-	Params map[string]string
+	Method   string
+	Url      string
+	Proto    string
+	Header   Header
+	Body     []byte
+	Params   map[string]string
+	FilePath string
 }
 
 type ResponseWrite struct {
@@ -52,9 +53,14 @@ func (r *ResponseWrite) Write(statusCode int, statusText string, headers Header,
 type HandlerFunc func(Request, ServerResponse)
 
 var routes = make(map[string]HandlerFunc)
+var routesFile = make(map[string]HandlerFunc)
 
 func HandleFunc(pattern string, handler HandlerFunc) {
 	routes[pattern] = handler
+}
+
+func HandleServer(dir string, handler HandlerFunc) {
+	routesFile[dir] = handler
 }
 
 func ListenAndServe(p string) {
@@ -93,6 +99,18 @@ func handleConnection(conn net.Conn) {
 
 	req := parseHttpRequest(data[:n])
 
+	for prefix, handler := range routesFile {
+		if strings.HasPrefix(req.Url, prefix) {
+			filePath := strings.TrimPrefix(req.Url, prefix)
+			if strings.HasPrefix(filePath, "/") {
+				filePath = filePath[1:]
+			}
+			req.FilePath = filePath
+			handler(req, &ResponseWrite{Conn: conn})
+			return
+		}
+	}
+
 	for pattern, handler := range routes {
 		if ok, params := matchRoute(pattern, req.Url); ok {
 			req.Params = params
@@ -101,9 +119,9 @@ func handleConnection(conn net.Conn) {
 		}
 	}
 
+	conn.Write([]byte("HTTP/1.1 404 Not Found\r\n"))
 }
 
-// TODO: refactor
 func parseHttpRequest(data []byte) Request {
 	reqs := strings.Split(string(data), "\r\n")
 	body := strings.Split(string(data), "\r\n\r\n")[1]
@@ -143,12 +161,6 @@ func matchRoute(pattern, path string) (bool, map[string]string) {
 
 		pp := patternParts[i]
 		cp := pathParts[i]
-
-		if strings.HasPrefix(pp, "*") {
-			key := pp[1:]
-			params[key] = strings.Join(pathParts[i:], "/")
-			return true, params
-		}
 
 		if strings.HasPrefix(pp, "{") && strings.HasSuffix(pp, "}") {
 			key := pp[1 : len(pp)-1]
