@@ -6,10 +6,11 @@ import (
 
 func main() {
 
-	http.HandleFunc("/", baseHandler)
-	http.HandleFunc("/echo/{text}", echoHandler)
-	http.HandleFunc("/user-agent", userAgentHandler)
-	http.HandleServer("/files", fileHandler)
+	http.HandleFunc("/", baseHandler, "GET")
+	http.HandleFunc("/echo/{text}", echoHandler, "GET")
+	http.HandleFunc("/user-agent", userAgentHandler, "GET")
+	http.HandleServer("/files", fileHandler, "GET")
+	http.HandleServer("/files", fileUploadHandler, "POST")
 
 	http.ListenAndServe("4221")
 

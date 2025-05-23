@@ -51,16 +51,31 @@ func (r *ResponseWrite) Write(statusCode int, statusText string, headers Header,
 }
 
 type HandlerFunc func(Request, ServerResponse)
-
-var routes = make(map[string]HandlerFunc)
-var routesFile = make(map[string]HandlerFunc)
-
-func HandleFunc(pattern string, handler HandlerFunc) {
-	routes[pattern] = handler
+type Handle struct {
+	Method  string
+	Handler HandlerFunc
+}
+type HandleFile struct {
+	Method  string
+	Handler HandlerFunc
 }
 
-func HandleServer(dir string, handler HandlerFunc) {
-	routesFile[dir] = handler
+var routes = make(map[string]Handle)
+var routesFile = make(map[string]HandleFile)
+
+func HandleFunc(pattern string, handler HandlerFunc, methods string) {
+	routes[pattern] = Handle{
+		Method:  methods,
+		Handler: handler,
+	}
+
+}
+
+func HandleServer(dir string, handler HandlerFunc, methods string) {
+	routesFile[dir] = HandleFile{
+		Method:  methods,
+		Handler: handler,
+	}
 }
 
 func ListenAndServe(p string) {
@@ -100,23 +115,36 @@ func handleConnection(conn net.Conn) {
 	req := parseHttpRequest(data[:n])
 
 	for prefix, handler := range routesFile {
-		if strings.HasPrefix(req.Url, prefix) {
-			filePath := strings.TrimPrefix(req.Url, prefix)
-			if strings.HasPrefix(filePath, "/") {
-				filePath = filePath[1:]
+		if handler.Method == req.Method {
+			if strings.HasPrefix(req.Url, prefix) {
+				filePath := strings.TrimPrefix(req.Url, prefix)
+				if strings.HasPrefix(filePath, "/") {
+					filePath = filePath[1:]
+				}
+				req.FilePath = filePath
+				handler.Handler(req, &ResponseWrite{Conn: conn})
+				break
 			}
-			req.FilePath = filePath
-			handler(req, &ResponseWrite{Conn: conn})
-			return
+		} else {
+			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n"))
+			break
 		}
 	}
 
 	for pattern, handler := range routes {
-		if ok, params := matchRoute(pattern, req.Url); ok {
-			req.Params = params
-			handler(req, &ResponseWrite{Conn: conn})
+
+		if handler.Method == req.Method {
+			if ok, params := matchRoute(pattern, req.Url); ok {
+				req.Params = params
+
+				handler.Handler(req, &ResponseWrite{Conn: conn})
+				break
+			}
+		} else {
+			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n"))
 			break
 		}
+
 	}
 
 	conn.Write([]byte("HTTP/1.1 404 Not Found\r\n"))
