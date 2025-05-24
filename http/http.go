@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 )
 
 type ServerResponse interface {
@@ -103,16 +104,31 @@ func ListenAndServe(p string) {
 }
 
 func handleConnection(conn net.Conn) {
+	data := make(chan []byte)
+	var wg sync.WaitGroup
 
-	data := make([]byte, 1024)
+	wg.Add(1)
 
-	n, err := conn.Read(data)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
+	go func() {
+		defer wg.Done()
 
-	req := parseHttpRequest(data[:n])
+		buffer := make([]byte, 1045)
+
+		n, err := conn.Read(buffer)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		data <- buffer[:n]
+	}()
+
+	go func() {
+		wg.Wait()
+		close(data)
+	}()
+
+	req := parseHttpRequest(<-data)
 
 	for prefix, handler := range routesFile {
 		if handler.Method == req.Method {
